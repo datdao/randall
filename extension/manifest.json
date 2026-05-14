@@ -6,13 +6,15 @@
   "permissions": [
     "tabCapture",
     "offscreen",
-    "downloads"
+    "downloads",
+    "storage"
   ],
   "background": {
     "service_worker": "service-worker.js"
   },
   "action": {
-    "default_title": "Click to record this tab",
+    "default_popup": "popup.html",
+    "default_title": "Randall — Tab Recorder",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

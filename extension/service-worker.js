@@ -1,14 +1,19 @@
 // Randall — service worker
-// Click = start recording. Click again = stop and save.
-// Auto-saves on tab close. Recovers from crashes via IndexedDB.
+// Popup controls recording. One tab at a time.
 
-const recordings = new Map(); // tabId → { tabTitle, startedAt }
+let recording = null; // { tabId, tabTitle, startedAt }
+
+const QUALITY = {
+  low:  { videoBitsPerSecond: 500_000,   audioBitsPerSecond: 96_000,  fps: 5 },
+  mid:  { videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 96_000,  fps: 15 },
+  high: { videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 96_000,  fps: 30 },
+};
 
 // ─── Auto-stop when recorded tab is closed ───────────────────────────────────
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (recordings.has(tabId)) {
-    stopRecording(tabId);
+  if (recording && recording.tabId === tabId) {
+    stopRecording();
   }
 });
 
@@ -18,7 +23,6 @@ chrome.runtime.onStartup.addListener(checkRecovery);
 chrome.runtime.onInstalled.addListener(checkRecovery);
 
 async function checkRecovery() {
-  // If offscreen doc has leftover chunks in IndexedDB, offer to save them
   if (!(await hasOffscreen())) {
     await chrome.offscreen.createDocument({
       url: "offscreen.html",
@@ -30,98 +34,103 @@ async function checkRecovery() {
   chrome.runtime.sendMessage({ target: "offscreen", action: "recover" });
 }
 
-// ─── Icon Click Toggle ───────────────────────────────────────────────────────
+// ─── Messages ────────────────────────────────────────────────────────────────
 
-chrome.action.onClicked.addListener(async (tab) => {
-  try {
-    if (recordings.has(tab.id)) {
-      await stopRecording(tab.id);
-    } else {
-      await startRecording(tab);
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "getState") {
+    sendResponse(recording ? { recording: true, startedAt: recording.startedAt } : null);
+    return true;
+  }
+  if (msg.action === "start") {
+    handleStart(msg.tabId);
+    return;
+  }
+  if (msg.action === "stop") {
+    stopRecording();
+    return;
+  }
+
+  // From offscreen
+  if (msg.target === "service-worker") {
+    if (msg.event === "recovered") {
+      const filename = `recovered_${Date.now()}.webm`;
+      if (msg.blob) {
+        chrome.downloads.download({ url: msg.blob, filename, saveAs: true });
+      }
+    } else if (msg.event === "stopped") {
+      saveRecording(msg.blob);
+    } else if (msg.event === "error") {
+      console.error("[randall]", msg.detail);
+      recording = null;
+      updateBadge();
     }
-  } catch (err) {
-    showError(tab.id, err.message || String(err));
   }
 });
 
 // ─── Recording ───────────────────────────────────────────────────────────────
 
-async function startRecording(tab) {
-  // Get stream ID for the active tab
-  const streamId = await new Promise((resolve, reject) => {
-    chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (id) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(id);
-      }
+async function handleStart(tabId) {
+  if (recording) return; // already recording
+
+  try {
+    const streamId = await new Promise((resolve, reject) => {
+      chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (id) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(id);
+        }
+      });
     });
-  });
 
-  recordings.set(tab.id, {
-    tabTitle: tab.title || "Untitled",
-    startedAt: Date.now(),
-  });
+    const { quality } = await chrome.storage.local.get("quality");
+    const q = QUALITY[quality] || QUALITY.mid;
 
-  // Create offscreen document if needed
-  if (!(await hasOffscreen())) {
-    await chrome.offscreen.createDocument({
-      url: "offscreen.html",
-      reasons: ["USER_MEDIA"],
-      justification: "Recording tab audio/video via MediaRecorder",
-    });
-    await new Promise((r) => setTimeout(r, 500));
-  }
+    const tab = await chrome.tabs.get(tabId);
+    recording = {
+      tabId,
+      tabTitle: tab.title || "Untitled",
+      startedAt: Date.now(),
+    };
 
-  chrome.runtime.sendMessage({
-    target: "offscreen",
-    action: "start",
-    tabId: tab.id,
-    streamId,
-  });
-
-  updateBadge();
-  chrome.action.setTitle({ tabId: tab.id, title: "Click to stop recording" });
-}
-
-async function stopRecording(tabId) {
-  chrome.runtime.sendMessage({
-    target: "offscreen",
-    action: "stop",
-    tabId,
-  });
-}
-
-// ─── Messages from offscreen ─────────────────────────────────────────────────
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.target !== "service-worker") return;
-
-  if (msg.event === "recovered") {
-    // Save recovered recording from a crash
-    const filename = `recovered_${Date.now()}.webm`;
-    if (msg.blob) {
-      chrome.downloads.download({ url: msg.blob, filename, saveAs: true });
+    if (!(await hasOffscreen())) {
+      await chrome.offscreen.createDocument({
+        url: "offscreen.html",
+        reasons: ["USER_MEDIA"],
+        justification: "Recording tab audio/video via MediaRecorder",
+      });
+      await new Promise((r) => setTimeout(r, 300));
     }
-  } else if (msg.event === "stopped") {
-    saveRecording(msg.tabId, msg.blob);
-  } else if (msg.event === "error") {
-    console.error("[randall]", msg.detail);
-    showError(msg.tabId, msg.detail);
-    recordings.delete(msg.tabId);
+
+    chrome.runtime.sendMessage({
+      target: "offscreen",
+      action: "start",
+      tabId,
+      streamId,
+      quality: q,
+    });
+
     updateBadge();
+  } catch (err) {
+    console.error("[randall] start failed:", err);
   }
-});
+}
 
-function saveRecording(tabId, blobUrl) {
-  const rec = recordings.get(tabId);
-  if (!rec) return;
+function stopRecording() {
+  if (!recording) return;
+  chrome.runtime.sendMessage({ target: "offscreen", action: "stop", tabId: recording.tabId });
+}
 
-  const timestamp = new Date(rec.startedAt)
+// ─── Save ────────────────────────────────────────────────────────────────────
+
+function saveRecording(blobUrl) {
+  if (!recording) return;
+
+  const timestamp = new Date(recording.startedAt)
     .toISOString()
     .replace(/[:.]/g, "-")
     .slice(0, 19);
-  const safeName = rec.tabTitle
+  const safeName = recording.tabTitle
     .replace(/[^a-zA-Z0-9 _-]/g, "")
     .trim()
     .slice(0, 50);
@@ -131,33 +140,19 @@ function saveRecording(tabId, blobUrl) {
     chrome.downloads.download({ url: blobUrl, filename, saveAs: true });
   }
 
-  recordings.delete(tabId);
+  recording = null;
   updateBadge();
-  chrome.action.setTitle({ tabId, title: "Click to record this tab" });
 }
 
 // ─── Badge ───────────────────────────────────────────────────────────────────
 
 function updateBadge() {
-  const count = recordings.size;
-  if (count > 0) {
-    chrome.action.setBadgeText({ text: String(count) });
+  if (recording) {
+    chrome.action.setBadgeText({ text: "REC" });
     chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
   } else {
     chrome.action.setBadgeText({ text: "" });
   }
-}
-
-function showError(tabId, message) {
-  console.error("[randall] Error:", message);
-  chrome.action.setBadgeText({ text: "!" });
-  chrome.action.setBadgeBackgroundColor({ color: "#F59E0B" });
-  if (tabId) {
-    chrome.action.setTitle({ tabId, title: "Error: " + message });
-  }
-  setTimeout(() => {
-    chrome.action.setBadgeText({ text: "" });
-  }, 5000);
 }
 
 async function hasOffscreen() {

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Randall</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Idle state -->
+    <div id="idle">
+      <div class="quality">
+        <label>Quality</label>
+        <div class="options">
+          <button class="opt" data-q="low">Low</button>
+          <button class="opt selected" data-q="mid">Mid</button>
+          <button class="opt" data-q="high">High</button>
+        </div>
+      </div>
+      <button id="btn-start" class="btn-record">⏺ Record this tab</button>
+    </div>
+
+    <!-- Recording state -->
+    <div id="active" class="hidden">
+      <div class="status">
+        <span class="dot"></span>
+        <span id="timer">00:00</span>
+      </div>
+      <button id="btn-stop" class="btn-stop">⏹ Stop & Save</button>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

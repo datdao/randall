@@ -1,0 +1,44 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 220px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.container { padding: 14px; }
+.hidden { display: none; }
+
+.quality { margin-bottom: 12px; }
+.quality label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.options { display: flex; gap: 6px; margin-top: 6px; }
+.opt {
+  flex: 1; padding: 8px 4px; border: 1px solid #333; border-radius: 6px;
+  background: transparent; color: #ccc; cursor: pointer; text-align: center;
+  font-size: 12px; font-weight: 600; transition: all 0.15s;
+}
+.opt:hover { border-color: #555; }
+.opt.selected { border-color: #3b82f6; background: #1e3a5f; color: #fff; }
+
+.btn-record {
+  width: 100%; padding: 10px; border: none; border-radius: 8px;
+  background: #dc2626; color: #fff; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.btn-record:hover { background: #b91c1c; }
+
+.status { display: flex; align-items: center; gap: 8px; justify-content: center; margin-bottom: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+#timer { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: #fff; }
+
+.btn-stop {
+  width: 100%; padding: 10px; border: none; border-radius: 8px;
+  background: #374151; color: #fca5a5; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.btn-stop:hover { background: #4b5563; }

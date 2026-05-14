@@ -5,11 +5,12 @@ const recorders = new Map(); // tabId → { recorder, stream }
 
 console.log("[randall offscreen] loaded");
 
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.target !== "offscreen") return;
 
   if (msg.action === "start") {
-    startRecording(msg.tabId, msg.streamId);
+    startRecording(msg.tabId, msg.streamId, msg.quality);
   } else if (msg.action === "stop") {
     stopRecording(msg.tabId);
   } else if (msg.action === "recover") {
@@ -17,7 +18,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-async function startRecording(tabId, streamId) {
+async function startRecording(tabId, streamId, msg) {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -43,17 +44,28 @@ async function startRecording(tabId, streamId) {
     ? "video/webm;codecs=vp9,opus"
     : "video/webm;codecs=vp8,opus";
 
+  // Apply frame rate from quality settings
+  const fps = (msg && msg.fps) || 5;
+  stream.getVideoTracks().forEach((track) => {
+    try {
+      track.applyConstraints({ frameRate: { max: fps } });
+    } catch {}
+  });
+
   // Clear any previous chunks for this tab
   await clearChunks(tabId);
 
+  const videoBits = (msg && msg.videoBitsPerSecond) || 1_000_000;
+  const audioBits = (msg && msg.audioBitsPerSecond) || 64_000;
+
   const recorder = new MediaRecorder(stream, {
     mimeType,
-    videoBitsPerSecond: 3_000_000,
+    videoBitsPerSecond: videoBits,
+    audioBitsPerSecond: audioBits,
   });
 
   recorder.ondataavailable = async (e) => {
     if (e.data.size > 0) {
-      // Persist each chunk to IndexedDB immediately
       const buffer = await e.data.arrayBuffer();
       await saveChunk(tabId, buffer, mimeType);
     }
