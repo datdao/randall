@@ -2,9 +2,9 @@
 // Chunks are persisted to IndexedDB every second to survive crashes.
 
 const recorders = new Map(); // tabId → { recorder, stream }
+const finalizing = new Set(); // prevent double-finalize on tab close race
 
 console.log("[randall offscreen] loaded");
-
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.target !== "offscreen") return;
@@ -71,19 +71,7 @@ async function startRecording(tabId, streamId, msg) {
     }
   };
 
-  recorder.onstop = async () => {
-    // Assemble final file from all persisted chunks
-    const { chunks, mimeType: mt } = await loadChunks(tabId);
-    if (chunks.length > 0) {
-      const blob = new Blob(chunks.map((c) => new Blob([c])), { type: mt });
-      const blobUrl = URL.createObjectURL(blob);
-      notify("stopped", tabId, blobUrl);
-    } else {
-      notify("stopped", tabId, null);
-    }
-    await clearChunks(tabId);
-    cleanup(tabId);
-  };
+  recorder.onstop = () => finalize(tabId);
 
   recorder.onerror = (e) => {
     notify("error", tabId, "MediaRecorder error: " + e.error?.message);
@@ -98,11 +86,27 @@ async function startRecording(tabId, streamId, msg) {
 function stopRecording(tabId) {
   const entry = recorders.get(tabId);
   if (entry && entry.recorder.state !== "inactive") {
-    entry.recorder.stop();
+    entry.recorder.stop(); // triggers onstop → finalize
+  } else {
+    finalize(tabId); // recorder already stopped (tab closed) — assemble from IndexedDB
+  }
+}
+
+async function finalize(tabId) {
+  if (finalizing.has(tabId)) return; // already handling this tab
+  finalizing.add(tabId);
+
+  const { chunks, mimeType: mt } = await loadChunks(tabId);
+  if (chunks.length > 0) {
+    const blob = new Blob(chunks.map((c) => new Blob([c])), { type: mt });
+    const blobUrl = URL.createObjectURL(blob);
+    notify("stopped", tabId, blobUrl);
   } else {
     notify("stopped", tabId, null);
-    cleanup(tabId);
   }
+  await clearChunks(tabId);
+  cleanup(tabId);
+  finalizing.delete(tabId);
 }
 
 function cleanup(tabId) {
