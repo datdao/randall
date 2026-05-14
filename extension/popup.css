@@ -12,7 +12,9 @@ body {
 .hidden { display: none; }
 
 .quality { margin-bottom: 12px; }
-.quality label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.quality label, .save-to label {
+  font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+}
 
 .options { display: flex; gap: 6px; margin-top: 6px; }
 .opt {
@@ -22,6 +24,17 @@ body {
 }
 .opt:hover { border-color: #555; }
 .opt.selected { border-color: #3b82f6; background: #1e3a5f; color: #fff; }
+
+.save-to { margin-bottom: 12px; }
+.folder-btn {
+  display: block; width: 100%; margin-top: 6px; padding: 8px 10px;
+  border: 1px dashed #555; border-radius: 6px; background: transparent;
+  color: #888; cursor: pointer; text-align: left; font-size: 12px;
+  transition: all 0.15s; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-btn:hover { border-color: #777; color: #ccc; }
+.folder-btn.chosen { border-style: solid; border-color: #333; color: #ccc; }
 
 .btn-record {
   width: 100%; padding: 10px; border: none; border-radius: 8px;

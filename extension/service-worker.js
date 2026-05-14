@@ -53,12 +53,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // From offscreen
   if (msg.target === "service-worker") {
     if (msg.event === "recovered") {
-      const filename = `recovered_${Date.now()}.webm`;
+      const filename = `Randall_recovered_${Date.now()}.webm`;
       if (msg.blob) {
-        chrome.downloads.download({ url: msg.blob, filename, saveAs: true });
+        chrome.downloads.download({ url: msg.blob, filename, saveAs: false });
       }
     } else if (msg.event === "stopped") {
-      saveRecording(msg.blob);
+      if (msg.savedToFolder) {
+        recording = null;
+        updateBadge();
+      } else {
+        saveRecording(msg.blob);
+      }
     } else if (msg.event === "error") {
       console.error("[randall]", msg.detail);
       recording = null;
@@ -108,6 +113,7 @@ async function handleStart(tabId) {
       tabId,
       streamId,
       quality: q,
+      tabTitle: recording.tabTitle,
     });
 
     updateBadge();
@@ -137,7 +143,7 @@ function saveRecording(blobUrl) {
   const filename = `${safeName}_${timestamp}.webm`;
 
   if (blobUrl) {
-    chrome.downloads.download({ url: blobUrl, filename, saveAs: true });
+    chrome.downloads.download({ url: blobUrl, filename, saveAs: false });
   }
 
   recording = null;
