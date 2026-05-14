@@ -1,7 +1,34 @@
 // Randall — service worker
 // Click = start recording. Click again = stop and save.
+// Auto-saves on tab close. Recovers from crashes via IndexedDB.
 
 const recordings = new Map(); // tabId → { tabTitle, startedAt }
+
+// ─── Auto-stop when recorded tab is closed ───────────────────────────────────
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (recordings.has(tabId)) {
+    stopRecording(tabId);
+  }
+});
+
+// ─── Recover unsaved recordings on startup ───────────────────────────────────
+
+chrome.runtime.onStartup.addListener(checkRecovery);
+chrome.runtime.onInstalled.addListener(checkRecovery);
+
+async function checkRecovery() {
+  // If offscreen doc has leftover chunks in IndexedDB, offer to save them
+  if (!(await hasOffscreen())) {
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["USER_MEDIA"],
+      justification: "Recovering unsaved recording data",
+    });
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  chrome.runtime.sendMessage({ target: "offscreen", action: "recover" });
+}
 
 // ─── Icon Click Toggle ───────────────────────────────────────────────────────
 
@@ -70,7 +97,13 @@ async function stopRecording(tabId) {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.target !== "service-worker") return;
 
-  if (msg.event === "stopped") {
+  if (msg.event === "recovered") {
+    // Save recovered recording from a crash
+    const filename = `recovered_${Date.now()}.webm`;
+    if (msg.blob) {
+      chrome.downloads.download({ url: msg.blob, filename, saveAs: true });
+    }
+  } else if (msg.event === "stopped") {
     saveRecording(msg.tabId, msg.blob);
   } else if (msg.event === "error") {
     console.error("[randall]", msg.detail);
