@@ -1,7 +1,17 @@
 // Randall — service worker
 // Popup controls recording. One tab at a time.
+// Recording state is persisted to chrome.storage.local so it survives
+// service worker suspension (MV3 can kill the worker after ~30 s idle).
 
 let recording = null; // { tabId, tabTitle, startedAt }
+
+// Restore in-memory state from storage when the worker wakes up
+const stateReady = chrome.storage.local.get("recording").then(({ recording: saved }) => {
+  if (saved) {
+    recording = saved;
+    updateBadge();
+  }
+});
 
 const QUALITY = {
   low:  { videoBitsPerSecond: 500_000,   audioBitsPerSecond: 96_000,  fps: 5 },
@@ -9,9 +19,18 @@ const QUALITY = {
   high: { videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 96_000,  fps: 30 },
 };
 
+function persistRecording() {
+  if (recording) {
+    chrome.storage.local.set({ recording });
+  } else {
+    chrome.storage.local.remove("recording");
+  }
+}
+
 // ─── Auto-stop when recorded tab is closed ───────────────────────────────────
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  await stateReady;
   if (recording && recording.tabId === tabId) {
     stopRecording();
   }
@@ -38,7 +57,9 @@ async function checkRecovery() {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "getState") {
-    sendResponse(recording ? { recording: true, startedAt: recording.startedAt } : null);
+    stateReady.then(() => {
+      sendResponse(recording ? { recording: true, startedAt: recording.startedAt } : null);
+    });
     return true;
   }
   if (msg.action === "start") {
@@ -60,6 +81,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.event === "stopped") {
       if (msg.savedToFolder) {
         recording = null;
+        persistRecording();
         updateBadge();
       } else {
         saveRecording(msg.blob);
@@ -67,6 +89,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.event === "error") {
       console.error("[randall]", msg.detail);
       recording = null;
+      persistRecording();
       updateBadge();
     }
   }
@@ -75,6 +98,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ─── Recording ───────────────────────────────────────────────────────────────
 
 async function handleStart(tabId) {
+  await stateReady;
   if (recording) return; // already recording
 
   try {
@@ -97,6 +121,7 @@ async function handleStart(tabId) {
       tabTitle: tab.title || "Untitled",
       startedAt: Date.now(),
     };
+    persistRecording();
 
     if (!(await hasOffscreen())) {
       await chrome.offscreen.createDocument({
@@ -147,6 +172,7 @@ function saveRecording(blobUrl) {
   }
 
   recording = null;
+  persistRecording();
   updateBadge();
 }
 

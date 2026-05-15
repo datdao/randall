@@ -93,7 +93,13 @@ async function startRecording(tabId, streamId, qualityMsg, tabTitle) {
     cleanup(tabId);
   };
 
-  recorders.set(tabId, { recorder, stream });
+  // Play captured audio back to speakers so the user can still hear it.
+  // tabCapture mutes the tab by default — this re-routes audio output.
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  source.connect(audioCtx.destination);
+
+  recorders.set(tabId, { recorder, stream, audioCtx });
   recorder.start(1000);
   console.log("[randall offscreen] recording tab", tabId);
 }
@@ -234,6 +240,7 @@ function cleanup(tabId) {
   const entry = recorders.get(tabId);
   if (!entry) return;
   entry.stream.getTracks().forEach((t) => t.stop());
+  if (entry.audioCtx) entry.audioCtx.close().catch(() => {});
   recorders.delete(tabId);
 }
 
