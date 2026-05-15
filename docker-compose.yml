@@ -1,0 +1,7 @@
+services:
+  test:
+    build: .
+    volumes:
+      - ./extension:/app/extension:ro
+      - ./test:/app/test:ro
+    command: npm test

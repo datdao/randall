@@ -1,4 +1,4 @@
-.PHONY: dev clean
+.PHONY: dev clean test test-watch
 
 CHROME := /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
 EXT_DIR := $(CURDIR)/extension
@@ -13,6 +13,12 @@ dev:
 		--no-default-browser-check \
 		"chrome://extensions" &>/dev/null &
 	@sleep 2 && echo "✅ Chrome launched — pin the extension from 🧩 menu"
+
+test:
+	@docker compose run --rm --build test
+
+test-watch:
+	@docker compose run --rm --build test npx jest --watchAll
 
 clean:
 	@rm -rf /tmp/randall-chrome-dev
