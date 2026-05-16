@@ -1,4 +1,4 @@
-.PHONY: dev clean test test-watch
+.PHONY: dev clean test test-watch lint
 
 CHROME := /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
 EXT_DIR := $(CURDIR)/extension
@@ -19,6 +19,9 @@ test:
 
 test-watch:
 	@docker compose run --rm --build test npx jest --watchAll
+
+lint:
+	@docker compose run --rm --build lint
 
 clean:
 	@rm -rf /tmp/randall-chrome-dev

@@ -5,3 +5,11 @@ services:
       - ./extension:/app/extension:ro
       - ./test:/app/test:ro
     command: npm test
+
+  lint:
+    build: .
+    volumes:
+      - ./extension:/app/extension:ro
+      - ./test:/app/test:ro
+      - ./eslint.config.js:/app/eslint.config.js:ro
+    command: npm run lint
